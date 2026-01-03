@@ -26,6 +26,7 @@
 #include <QFileInfo>
 
 #include "WikiDialog.h"
+#include <functional>
 #include "gui/WikiPoos/WikiAddDialog.h"
 #include "gui/WikiPoos/WikiEditDialog.h"
 #include "gui/settings/rsharesettings.h"
@@ -129,6 +130,11 @@ WikiDialog::WikiDialog(QWidget *parent) : RsGxsUpdateBroadcastPage(rsWiki, paren
 	// load settings
 	processSettings(true);
 	updateDisplay(true);
+
+	// RsEvents
+	mEventHandlerId = rsEvents->registerEventsHandler(RsEventType::GXS_WIKI,
+		std::bind(&WikiDialog::handleEvent_main_thread, this, std::placeholders::_1),
+		RsEvent::PRIORITY_NORMAL);
 }
 
 WikiDialog::~WikiDialog()
@@ -136,6 +142,7 @@ WikiDialog::~WikiDialog()
 	// save settings
 	processSettings(false);
 	
+	rsEvents->unregisterEventsHandler(mEventHandlerId);
 	delete(mWikiQueue);
 }
 
@@ -750,4 +757,46 @@ void WikiDialog::updateDisplay(bool complete)
 void WikiDialog::insertWikiGroups()
 {
 	updateDisplay(true);
+}
+
+void WikiDialog::handleEvent_main_thread(std::shared_ptr<const RsEvent> event)
+{
+	if (event->mType != RsEventType::GXS_WIKI)
+		return;
+
+	auto wikiEvent = std::dynamic_pointer_cast<const RsWikiEvent>(event);
+	if (!wikiEvent)
+		return;
+
+	switch (wikiEvent->mWikiEventCode)
+	{
+		case RsWikiEventCode::NEW_COLLECTION:
+		case RsWikiEventCode::UPDATED_COLLECTION:
+		case RsWikiEventCode::SUBSCRIBE_STATUS_CHANGED:
+		case RsWikiEventCode::DELETED_COLLECTION:
+			// Refresh group list
+			requestGroupMeta();
+			break;
+
+		case RsWikiEventCode::NEW_SNAPSHOT:
+		case RsWikiEventCode::UPDATED_SNAPSHOT:
+			// If we are viewing this group, refresh pages
+			if (!mGroupId.isNull() && mGroupId == wikiEvent->mCollectionId)
+			{
+				std::list<RsGxsGroupId> groupIds;
+				groupIds.push_back(mGroupId);
+				requestPages(groupIds);
+
+				// If we are viewing this specific page, refresh it
+				if (mPageSelected == wikiEvent->mSnapshotId)
+				{
+					RsGxsGrpMsgIdPair pair(mGroupId, mPageSelected);
+					requestWikiPage(pair);
+				}
+			}
+			break;
+
+		default:
+			break;
+	}
 }

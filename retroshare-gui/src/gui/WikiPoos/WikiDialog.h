@@ -31,6 +31,7 @@
 #include "util/TokenQueue.h"
 
 #include <map>
+#include <memory>
 
 #define IMAGE_WIKI              ":/icons/png/wiki.png"
 
@@ -50,6 +51,12 @@ public:
 	virtual QString helpText() const { return ""; } //MainPage
 
 	void loadRequest(const TokenQueue *queue, const TokenRequest &req);
+
+	// RsEvents
+	uint32_t mEventHandlerId;
+
+public slots:
+	void handleEvent_main_thread(std::shared_ptr<const RsEvent> event);
 
 public:
 	virtual void updateDisplay(bool complete);
@@ -126,4 +133,3 @@ private:
 };
 
 #endif
-
